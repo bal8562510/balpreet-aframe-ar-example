@@ -2,80 +2,74 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Winter AR Working</title>
+  <title>Winter AR — Snowmen & Pine Trees</title>
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <style>
-    body { margin:0; }
-    #ar-button { position:absolute; top:12px; right:12px; z-index:10; padding:8px 12px; background: rgba(255,255,255,0.95); border-radius:8px; cursor:pointer;}
+    body { margin:0; overflow:hidden; }
+    .hint { position:absolute; bottom:12px; left:12px; background:rgba(0,0,0,0.6); color:white; padding:8px 12px; border-radius:8px; z-index:10;}
   </style>
 </head>
 <body>
+  <div class="hint">Tap anywhere to place snowmen or pine trees.</div>
 
-<button id="ar-button">AR</button>
+  <a-scene embedded vr-mode-ui="enabled: false">
+    <!-- Camera -->
+    <a-entity camera look-controls position="0 1.6 0"></a-entity>
 
-<a-scene embedded webxr="optionalFeatures: hit-test;">
-  <a-entity camera look-controls></a-entity>
+    <!-- Camera background feed -->
+    <a-assets>
+      <video id="cam" autoplay="true" muted playsinline></video>
+    </a-assets>
+    <a-video src="#cam" position="0 1.6 -2" width="4" height="2.25"></a-video>
 
-  <!-- Reticle -->
-  <a-entity id="reticle" visible="false"
-            geometry="primitive:ring; radiusInner:0.03; radiusOuter:0.05"
-            rotation="-90 0 0"
-            material="color:green; shader:flat">
-  </a-entity>
+    <!-- Container for spawned objects -->
+    <a-entity id="placements"></a-entity>
 
-  <!-- Container for spawned objects -->
-  <a-entity id="placements"></a-entity>
+    <!-- Snowman prototype -->
+    <a-entity id="prototype-snowman" visible="false">
+      <a-sphere radius="0.24" position="0 0.24 0" color="#fff"></a-sphere>
+      <a-sphere radius="0.18" position="0 0.60 0" color="#fff"></a-sphere>
+      <a-sphere radius="0.12" position="0 0.90 0" color="#fff"></a-sphere>
+    </a-entity>
 
-  <!-- Snowman prototype -->
-  <a-entity id="prototype-snowman" visible="false">
-    <a-sphere radius="0.24" position="0 0.24 0" color="#fff"></a-sphere>
-    <a-sphere radius="0.18" position="0 0.60 0" color="#fff"></a-sphere>
-    <a-sphere radius="0.12" position="0 0.90 0" color="#fff"></a-sphere>
-  </a-entity>
+    <!-- Pine tree prototype -->
+    <a-entity id="prototype-pinetree" visible="false">
+      <a-cylinder radius="0.03" height="0.18" position="0 0.09 0" color="#5b3a21"></a-cylinder>
+      <a-cone radius-bottom="0.25" radius-top="0.01" height="0.28" position="0 0.30 0" color="#0b8a2e"></a-cone>
+      <a-cone radius-bottom="0.19" radius-top="0.01" height="0.24" position="0 0.45 0" color="#0fa43a"></a-cone>
+    </a-entity>
+  </a-scene>
 
-  <!-- Pine tree prototype -->
-  <a-entity id="prototype-pinetree" visible="false">
-    <a-cylinder radius="0.03" height="0.18" position="0 0.09 0" color="#5b3a21"></a-cylinder>
-    <a-cone radius-bottom="0.25" radius-top="0.01" height="0.28" position="0 0.30 0" color="#0b8a2e"></a-cone>
-    <a-cone radius-bottom="0.19" radius-top="0.01" height="0.24" position="0 0.45 0" color="#0fa43a"></a-cone>
-  </a-entity>
-</a-scene>
+  <script>
+    const scene = document.querySelector('a-scene');
+    const container = document.getElementById('placements');
 
-<script>
-  const scene = document.querySelector('a-scene');
-  const reticle = document.getElementById('reticle');
-  const container = document.getElementById('placements');
+    // Access device camera
+    const video = document.getElementById('cam');
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+      .then(stream => { video.srcObject = stream; })
+      .catch(err => { alert("Camera access failed: " + err); });
 
-  function spawnAt(position) {
-    const choice = Math.random() < 0.5 ? 'prototype-snowman' : 'prototype-pinetree';
-    const proto = document.getElementById(choice).cloneNode(true);
-    proto.setAttribute('visible', 'true');
+    // Function to spawn snowman/pine tree at random x/z in front of camera
+    function spawnObject() {
+      const choice = Math.random() < 0.5 ? 'prototype-snowman' : 'prototype-pinetree';
+      const proto = document.getElementById(choice).cloneNode(true);
+      proto.setAttribute('visible','true');
 
-    const wrapper = document.createElement('a-entity');
-    wrapper.setAttribute('position', `${position.x} ${position.y} ${position.z}`);
-    wrapper.appendChild(proto);
-    container.appendChild(wrapper);
-  }
+      // Place object 1–2 meters in front of camera with random offset
+      const cam = scene.camera.el;
+      const camPos = cam.getAttribute('position');
+      const xOffset = (Math.random()-0.5) * 1; // random left/right
+      const zOffset = -1 - Math.random(); // 1–2 meters in front
+      const yPos = 0; // floor level
+      proto.setAttribute('position', `${camPos.x + xOffset} ${yPos} ${camPos.z + zOffset}`);
 
-  // AR button starts the session using A-Frame built-in enterVR()
-  document.getElementById('ar-button').addEventListener('click', () => {
-    scene.enterVR();
-  });
+      container.appendChild(proto);
+    }
 
-  // Tap to spawn objects
-  scene.addEventListener('loaded', () => {
-    scene.canvas.addEventListener('touchstart', () => {
-      if (reticle.object3D.visible) {
-        spawnAt(reticle.object3D.position.clone());
-      }
-    });
-  });
-
-  // Show the reticle when hit-test finds a surface
-  scene.addEventListener('ar-hit-test-found', e => {
-    reticle.setAttribute('visible', true);
-  });
-</script>
-
+    // Tap anywhere to spawn
+    scene.canvas.addEventListener('touchstart', spawnObject);
+    scene.canvas.addEventListener('click', spawnObject);
+  </script>
 </body>
 </html>
