@@ -10,17 +10,14 @@
   </style>
 </head>
 <body>
-  <div class="hint">Tap anywhere to place snowmen or pine trees.</div>
+  <div class="hint">Tap/click anywhere to spawn snowmen or pine trees.</div>
 
-  <a-scene embedded vr-mode-ui="enabled: false">
+  <a-scene embedded>
     <!-- Camera -->
-    <a-entity camera look-controls position="0 1.6 0"></a-entity>
+    <a-entity camera look-controls position="0 2 5"></a-entity>
 
-    <!-- Camera background feed -->
-    <a-assets>
-      <video id="cam" autoplay="true" muted playsinline></video>
-    </a-assets>
-    <a-video src="#cam" position="0 1.6 -2" width="4" height="2.25"></a-video>
+    <!-- Ground plane -->
+    <a-plane rotation="-90 0 0" width="20" height="20" color="#7ec850" position="0 0 0"></a-plane>
 
     <!-- Container for spawned objects -->
     <a-entity id="placements"></a-entity>
@@ -44,32 +41,32 @@
     const scene = document.querySelector('a-scene');
     const container = document.getElementById('placements');
 
-    // Access device camera
-    const video = document.getElementById('cam');
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
-      .then(stream => { video.srcObject = stream; })
-      .catch(err => { alert("Camera access failed: " + err); });
-
-    // Function to spawn snowman/pine tree at random x/z in front of camera
-    function spawnObject() {
+    function spawnObject(evt) {
       const choice = Math.random() < 0.5 ? 'prototype-snowman' : 'prototype-pinetree';
       const proto = document.getElementById(choice).cloneNode(true);
       proto.setAttribute('visible','true');
 
-      // Place object 1–2 meters in front of camera with random offset
-      const cam = scene.camera.el;
-      const camPos = cam.getAttribute('position');
-      const xOffset = (Math.random()-0.5) * 1; // random left/right
-      const zOffset = -1 - Math.random(); // 1–2 meters in front
-      const yPos = 0; // floor level
-      proto.setAttribute('position', `${camPos.x + xOffset} ${yPos} ${camPos.z + zOffset}`);
+      // Get click/tap position and convert to world coordinates on ground plane
+      const cursorPos = evt.detail ? evt.detail.intersection.point : null;
+      let x = 0, y = 0, z = 0;
+      if(cursorPos){
+        x = cursorPos.x;
+        y = 0;
+        z = cursorPos.z;
+      } else {
+        // fallback: random position on ground
+        x = (Math.random()-0.5)*10;
+        y = 0;
+        z = (Math.random()-0.5)*10;
+      }
 
+      proto.setAttribute('position', `${x} ${y} ${z}`);
       container.appendChild(proto);
     }
 
-    // Tap anywhere to spawn
-    scene.canvas.addEventListener('touchstart', spawnObject);
-    scene.canvas.addEventListener('click', spawnObject);
+    // Tap/click listener
+    scene.addEventListener('click', spawnObject);
+    scene.addEventListener('touchstart', spawnObject);
   </script>
 </body>
 </html>
