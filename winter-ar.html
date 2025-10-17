@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Winter AR — Snowmen & Pine Trees</title>
+  <script src="https://unpkg.com/aframe@1.4.2/dist/aframe.min.js"></script>
+  <style>
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial; }
+    .ui { position: absolute; left: 12px; top: 12px; z-index: 10; display:flex; gap:8px; }
+    .pill { background: rgba(255,255,255,0.95); border-radius: 999px; padding:8px 12px; box-shadow:0 2px 8px rgba(0,0,0,0.15); cursor:pointer; }
+    .pill.selected { background: #0f62fe; color:white; }
+    .hint { position: absolute; left: 12px; bottom: 12px; z-index:10; background: rgba(0,0,0,0.6); color: white; padding:8px 12px; border-radius:8px; }
+    #enter-ar { position:absolute; right:12px; top:12px; z-index:10; padding:8px 12px; border-radius:8px; background: rgba(255,255,255,0.95); }
+  </style>
+</head>
+<body>
+  <div class="ui">
+    <div id="btn-snowman" class="pill selected">Snowman</div>
+    <div id="btn-pinetree" class="pill">Pine Tree</div>
+    <div id="btn-both" class="pill">Toggle Both</div>
+  </div>
+  <button id="enter-ar">AR</button>
+  <div class="hint">Tap the screen to place. Use Chrome on Android with HTTPS.</div>
+
+  <a-scene embedded vr-mode-ui="enabled: false" renderer="logarithmicDepthBuffer: true;" webxr="optionalFeatures: hit-test;" arjs="sourceType: webcam;">
+    <!-- Camera (desktop preview) -->
+    <a-entity camera look-controls position="0 1.6 0"></a-entity>
+
+    <!-- Templates for objects (invisible until cloned) -->
+    <a-entity id="prototype-snowman" visible="false">
+      <!-- snowman body: 3 spheres -->
+      <a-entity position="0 0 0">
+        <a-sphere radius="0.24" position="0 0.24 0" segments-width="18" segments-height="12" color="#ffffff"></a-sphere>
+        <a-sphere radius="0.18" position="0 0.60 0" segments-width="18" segments-height="12" color="#ffffff"></a-sphere>
+        <a-sphere radius="0.12" position="0 0.90 0" segments-width="18" segments-height="12" color="#ffffff"></a-sphere>
+        <!-- eyes -->
+        <a-sphere radius="0.01" position="-0.03 0.95 0.09" color="#111"></a-sphere>
+        <a-sphere radius="0.01" position="0.03 0.95 0.09" color="#111"></a-sphere>
+        <!-- carrot nose -->
+        <a-cylinder radius="0.015" height="0.12" position="0 0.93 0.13" rotation="90 0 0" color="#ff8c00"></a-cylinder>
+        <!-- hat -->
+        <a-cylinder radius="0.08" height="0.04" position="0 1.03 0" color="#222"></a-cylinder>
+        <a-cylinder radius="0.05" height="0.06" position="0 1.08 0" color="#222"></a-cylinder>
+      </a-entity>
+    </a-entity>
+
+    <a-entity id="prototype-pinetree" visible="false">
+      <!-- trunk -->
+      <a-cylinder radius="0.03" height="0.18" position="0 0.09 0" color="#5b3a21"></a-cylinder>
+      <!-- stacked cones -->
+      <a-cone radius-bottom="0.25" radius-top="0.01" height="0.28" position="0 0.30 0" rotation="0 0 0" segments-radial="18" color="#0b8a2e"></a-cone>
+      <a-cone radius-bottom="0.19" radius-top="0.01" height="0.24" position="0 0.45 0" rotation="0 0 0" segments-radial="18" color="#0fa43a"></a-cone>
+      <a-cone radius-bottom="0.13" radius-top="0.01" height="0.20" position="0 0.60 0" rotation="0 0 0" segments-radial="18" color="#12b84a"></a-cone>
+    </a-entity>
+
+    <!-- Reticle to show hit-test position (desktop fallback) -->
+    <a-entity id="reticle" geometry="primitive: ring; radiusInner: 0.03; radiusOuter: 0.05;" rotation="-90 0 0" visible="false"></a-entity>
+
+    <!-- Root where placed objects go -->
+    <a-entity id="placements"></a-entity>
+
+  </a-scene>
+
+  <script>
+    // UI logic
+    const btnSnow = document.getElementById('btn-snowman');
+    const btnTree = document.getElementById('btn-pinetree');
+    const btnBoth = document.getElementById('btn-both');
+    let mode = 'snowman'; // 'snowman' | 'pinetree' | 'both'
+    btnSnow.addEventListener('click', ()=>{ mode='snowman'; setSelected(); });
+    btnTree.addEventListener('click', ()=>{ mode='pinetree'; setSelected(); });
+    btnBoth.addEventListener('click', ()=>{ mode = (mode==='both')? 'snowman' : 'both'; setSelected(); });
+    function setSelected(){ btnSnow.classList.toggle('selected', mode==='snowman'); btnTree.classList.toggle('selected', mode==='pinetree'); btnBoth.classList.toggle('selected', mode==='both'); }
+
+    // Helper to clone a prototype and insert into scene at world transform
+    function placePrototype(id, position, rotation, scale=1){
+      const proto = document.getElementById(id);
+      if(!proto) return null;
+      const clone = proto.cloneNode(true);
+      clone.setAttribute('visible', 'true');
+      // create wrapper entity
+      const wrapper = document.createElement('a-entity');
+      wrapper.setAttribute('position', `${position.x} ${position.y} ${position.z}`);
+      wrapper.setAttribute('rotation', `${rotation.x} ${rotation.y} ${rotation.z}`);
+      wrapper.setAttribute('scale', `${scale} ${scale} ${scale}`);
+      wrapper.appendChild(clone);
+      document.getElementById('placements').appendChild(wrapper);
+      return wrapper;
+    }
+
+    // AR / WebXR hit-test placement logic (bonus: spawn on touch)
+    // This component manages an XR session and performs hit tests. On touch, it spawns a new object.
+    AFRAME.registerComponent('ar-hit-spawner', {
+      schema: {},
+      init: function(){
+        this.onSessionStart = this.onSessionStart.bind(this);
+        this.onSessionEnd = this.onSessionEnd.bind(this);
+        this.onTouch = this.onTouch.bind(this);
+        this.xrSession = null;
+        this.hitTestSource = null;
+        this.refSpace = null;
+        this.viewerSpace = null;
+        this.reticle = document.getElementById('reticle');
+        this.el.sceneEl.renderer.xr.addEventListener('sessionstart', this.onSessionStart);
+        this.el.sceneEl.renderer.xr.addEventListener('sessionend', this.onSessionEnd);
+
+        // If user clicks/taps without AR (desktop), try raycasting from camera to ground plane
+        window.addEventListener('click', (ev)=>{
+          if(!this.xrSession){
+            // place at 1 meter in front of camera where y ~ 0 (quick heuristic)
+            const cam = this.el.sceneEl.camera;
+            const dir = new THREE.Vector3();
+            cam.getWorldDirection(dir);
+            const origin = cam.getWorldPosition(new THREE.Vector3());
+            const dist = 1.2;
+            const pos = origin.clone().add(dir.multiplyScalar(dist));
+            // snap y to 0 (desktop preview)
+            pos.y = 0;
+            spawnAt(pos);
+          }
+        });
+      },
+      onSessionStart: async function(){
+        const session = this.el.sceneEl.renderer.xr.getSession();
+        this.xrSession = session;
+        // request a reference space and hit test source
+        try{
+          this.refSpace = await session.requestReferenceSpace('local');
+          // some browsers need viewer ref space
+          this.viewerSpace = await session.requestReferenceSpace('viewer').catch(()=>null);
+          if(this.viewerSpace && session.requestHitTestSource){
+            this.hitTestSource = await session.requestHitTestSource({ space: this.viewerSpace });
+          }
+        }catch(err){ console.warn('Hit test setup failed:', err); }
+
+        // listen for touch to spawn objects
+        this.el.sceneEl.canvas.addEventListener('touchstart', this.onTouch);
+        this.el.sceneEl.canvas.addEventListener('mousedown', this.onTouch);
+
+        // show reticle
+        if(this.reticle) this.reticle.setAttribute('visible', 'false');
+
+        this.el.sceneEl.addEventListener('renderstart', ()=>{
+          // nothing
+        });
+
+        // XR frame loop: perform hit test each frame and move reticle
+        const self = this;
+        const renderer = this.el.sceneEl.renderer;
+        function onXRFrame(time, frame){
+          if(!self.xrSession) return; // finished
+          const viewerPose = frame.getViewerPose(self.refSpace);
+          if(self.hitTestSource && frame){
+            const hitTestResults = frame.getHitTestResults(self.hitTestSource);
+            if(hitTestResults.length>0){
+              const hit = hitTestResults[0];
+              const pose = hit.getPose(self.refSpace);
+              if(pose){
+                const p = pose.transform.position;
+                const q = pose.transform.orientation;
+                if(self.reticle){
+                  self.reticle.object3D.position.set(p.x,p.y,p.z);
+                  // convert quaternion to euler for attr
+                  const threeQuat = new THREE.Quaternion(q.x,q.y,q.z,q.w);
+                  const euler = new THREE.Euler().setFromQuaternion(threeQuat, 'YXZ');
+                  self.reticle.object3D.rotation.set(-Math.PI/2, 0, 0); // keep flat ring
+                  self.reticle.setAttribute('visible', true);
+                }
+              }
+            } else {
+              if(self.reticle) self.reticle.setAttribute('visible', false);
+            }
+          }
+          renderer.setAnimationLoop(onXRFrame);
+        }
+        renderer.setAnimationLoop(onXRFrame);
+      },
+      onSessionEnd: function(){
+        this.xrSession = null;
+        if(this.hitTestSource){
+          try{ this.hitTestSource.cancel(); }catch(e){}
+          this.hitTestSource = null;
+        }
+        if(this.el.sceneEl.canvas){
+          this.el.sceneEl.canvas.removeEventListener('touchstart', this.onTouch);
+          this.el.sceneEl.canvas.removeEventListener('mousedown', this.onTouch);
+        }
+        if(this.reticle) this.reticle.setAttribute('visible', false);
+      },
+      onTouch: function(ev){
+        // On touch, try to use the current reticle position if visible (XR) or compute raycast for desktop
+        if(this.reticle && this.reticle.getAttribute('visible')){
+          const p = this.reticle.object3D.position;
+          spawnAt(new THREE.Vector3(p.x,p.y,p.z));
+        } else {
+          // fallback: raycast from camera through touch point
+          const scene = this.el.sceneEl;
+          const touch = (ev.touches && ev.touches[0]) || ev;
+          const canvas = scene.canvas;
+          const rect = canvas.getBoundingClientRect();
+          const x = (touch.clientX - rect.left) / rect.width * 2 - 1;
+          const y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+          const mouse = new THREE.Vector2(x,y);
+          const cam = scene.camera;
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(mouse, cam);
+          // intersect with y=0 plane
+          const planeY = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+          const target = new THREE.Vector3();
+          raycaster.ray.intersectPlane(planeY, target);
+          if(target) spawnAt(target);
+        }
+      }
+    });
+
+    // helper spawn that reads current mode and creates object
+    function spawnAt(threeVec){
+      const sceneEl = document.querySelector('a-scene');
+      const placements = document.getElementById('placements');
+      // choose what to spawn
+      const choices = (mode === 'both') ? ['prototype-snowman','prototype-pinetree'] : (mode === 'snowman' ? ['prototype-snowman'] : ['prototype-pinetree']);
+      // if both, randomly choose
+      const protoId = choices[Math.floor(Math.random()*choices.length)];
+      const pos = { x: threeVec.x, y: threeVec.y, z: threeVec.z };
+      // small random rotation
+      const rot = { x: 0, y: Math.random()*360, z: 0 };
+      placePrototype(protoId, pos, rot, 1.0 + (Math.random()*0.2 - 0.1));
+    }
+
+    // attach the component to scene once ready
+    document.querySelector('a-scene').setAttribute('ar-hit-spawner', '');
+
+    // AR button: try to enter immersive-ar if supported
+    const enterBtn = document.getElementById('enter-ar');
+    enterBtn.addEventListener('click', async ()=>{
+      const scene = document.querySelector('a-scene');
+      const renderer = scene.renderer;
+      if(!navigator.xr){
+        alert('WebXR not available. Use Chrome on Android  (visit over HTTPS).');
+        return;
+      }
+      try{
+        const supported = await navigator.xr.isSessionSupported('immersive-ar');
+        if(!supported){ alert('Immersive AR not supported on this device/browser.'); return; }
+        const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test','local-floor'] });
+        await renderer.xr.setSession(session);
+        // when session starts, hit-spawner component will set up hit test
+      }catch(err){ console.error(err); alert('Failed to start AR session: '+err); }
+    });
+
+    // small host instructions printed to console
+    console.log('Winter AR ready. To use AR: 1) Serve this page over HTTPS (GitHub Pages), 2) Open in Chrome on Android, 3) Tap AR then tap screen to place snowmen/trees.');
+  </script>
+</body>
+</html>
