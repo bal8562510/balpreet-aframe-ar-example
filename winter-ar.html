@@ -1,49 +1,27 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta charset="utf-8">
   <title>Winter AR — Snowmen & Pine Trees</title>
   <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
   <style>
-    body { margin:0; font-family: system-ui, sans-serif; }
-    .ui { position: absolute; top: 12px; left: 12px; z-index:10; display:flex; gap:8px; }
-    .pill { padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,0.95); cursor:pointer; }
-    .pill.selected { background:#0f62fe; color:white; }
-    #enter-ar { position:absolute; top:12px; right:12px; z-index:10; padding:8px 12px; border-radius:8px; background: rgba(255,255,255,0.95); cursor:pointer; }
-    .hint { position:absolute; bottom:12px; left:12px; background: rgba(0,0,0,0.6); color:white; padding:8px 12px; border-radius:8px; z-index:10; }
+    body { margin:0; }
+    #ar-button { position:absolute; top:12px; right:12px; z-index:10; padding:8px 12px; background: rgba(255,255,255,0.95); border-radius:8px; cursor:pointer;}
+    .hint { position:absolute; bottom:12px; left:12px; background:rgba(0,0,0,0.6); color:white; padding:8px 12px; border-radius:8px; z-index:10;}
   </style>
 </head>
 <body>
+  <button id="ar-button">AR</button>
+  <div class="hint">Tap the screen to place snowmen or pine trees. Chrome Android required.</div>
 
-  <div class="ui">
-    <div id="btn-snowman" class="pill selected">Snowman</div>
-    <div id="btn-pinetree" class="pill">Pine Tree</div>
-    <div id="btn-both" class="pill">Toggle Both</div>
-  </div>
-
-  <button id="enter-ar">AR</button>
-  <div class="hint">Tap the screen to place. Use Chrome on Android with HTTPS.</div>
-
-  <a-scene embedded vr-mode-ui="enabled:false" renderer="logarithmicDepthBuffer:true"
-           webxr="optionalFeatures: hit-test;"
-           ar-hit-spawner>
-
-    <a-entity camera look-controls position="0 1.6 0"></a-entity>
+  <a-scene embedded webxr="optionalFeatures: hit-test;">
+    <a-entity camera look-controls></a-entity>
 
     <!-- Snowman prototype -->
     <a-entity id="prototype-snowman" visible="false">
       <a-sphere radius="0.24" position="0 0.24 0" color="#fff"></a-sphere>
       <a-sphere radius="0.18" position="0 0.60 0" color="#fff"></a-sphere>
       <a-sphere radius="0.12" position="0 0.90 0" color="#fff"></a-sphere>
-      <!-- eyes -->
-      <a-sphere radius="0.01" position="-0.03 0.95 0.09" color="#111"></a-sphere>
-      <a-sphere radius="0.01" position="0.03 0.95 0.09" color="#111"></a-sphere>
-      <!-- carrot nose -->
-      <a-cylinder radius="0.015" height="0.12" position="0 0.93 0.13" rotation="90 0 0" color="#ff8c00"></a-cylinder>
-      <!-- hat -->
-      <a-cylinder radius="0.08" height="0.04" position="0 1.03 0" color="#222"></a-cylinder>
-      <a-cylinder radius="0.05" height="0.06" position="0 1.08 0" color="#222"></a-cylinder>
     </a-entity>
 
     <!-- Pine tree prototype -->
@@ -51,95 +29,62 @@
       <a-cylinder radius="0.03" height="0.18" position="0 0.09 0" color="#5b3a21"></a-cylinder>
       <a-cone radius-bottom="0.25" radius-top="0.01" height="0.28" position="0 0.30 0" color="#0b8a2e"></a-cone>
       <a-cone radius-bottom="0.19" radius-top="0.01" height="0.24" position="0 0.45 0" color="#0fa43a"></a-cone>
-      <a-cone radius-bottom="0.13" radius-top="0.01" height="0.20" position="0 0.60 0" color="#12b84a"></a-cone>
     </a-entity>
 
     <!-- Reticle -->
-    <a-entity id="reticle" geometry="primitive:ring; radiusInner:0.03; radiusOuter:0.05" rotation="-90 0 0" visible="false"></a-entity>
-    <a-entity id="placements"></a-entity>
+    <a-entity id="reticle" geometry="primitive:ring; radiusInner:0.03; radiusOuter:0.05"
+              rotation="-90 0 0" visible="false" material="color:green; shader:flat">
+    </a-entity>
 
+    <!-- Container for spawned objects -->
+    <a-entity id="placements"></a-entity>
   </a-scene>
 
+  <!-- AR hit-test component -->
   <script>
-    // UI buttons
-    let mode = 'snowman';
-    const btnSnow = document.getElementById('btn-snowman');
-    const btnTree = document.getElementById('btn-pinetree');
-    const btnBoth = document.getElementById('btn-both');
-    btnSnow.onclick = ()=>{ mode='snowman'; updateUI(); };
-    btnTree.onclick = ()=>{ mode='pinetree'; updateUI(); };
-    btnBoth.onclick = ()=>{ mode = (mode==='both')? 'snowman':'both'; updateUI(); };
-    function updateUI(){
-      btnSnow.classList.toggle('selected', mode==='snowman');
-      btnTree.classList.toggle('selected', mode==='pinetree');
-      btnBoth.classList.toggle('selected', mode==='both');
-    }
-
-    // Place a prototype at a position
-    function placePrototype(id, pos, rot, scale=1){
-      const proto = document.getElementById(id);
-      const clone = proto.cloneNode(true);
-      clone.setAttribute('visible','true');
-      const wrapper = document.createElement('a-entity');
-      wrapper.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
-      wrapper.setAttribute('rotation', `${rot.x} ${rot.y} ${rot.z}`);
-      wrapper.setAttribute('scale', `${scale} ${scale} ${scale}`);
-      wrapper.appendChild(clone);
-      document.getElementById('placements').appendChild(wrapper);
-    }
-
-    // Spawn at a THREE.Vector3
-    function spawnAt(vec){
-      const choices = (mode==='both')?['prototype-snowman','prototype-pinetree']:(mode==='snowman'?['prototype-snowman']:['prototype-pinetree']);
-      const protoId = choices[Math.floor(Math.random()*choices.length)];
-      placePrototype(protoId, vec, {x:0,y:Math.random()*360,z:0}, 1+Math.random()*0.2-0.1);
-    }
-
-    // AR hit-spawner component
-    AFRAME.registerComponent('ar-hit-spawner',{
-      init: function(){
+    AFRAME.registerComponent('ar-hit-test', {
+      init: function () {
         const scene = this.el.sceneEl;
         const reticle = document.getElementById('reticle');
+        const container = document.getElementById('placements');
 
-        // Tap to spawn
-        scene.canvas.addEventListener('touchstart', ev=>{ handleTouch(ev); });
-        scene.canvas.addEventListener('mousedown', ev=>{ handleTouch(ev); });
+        function spawnAt(position) {
+          const choice = Math.random() < 0.5 ? 'prototype-snowman' : 'prototype-pinetree';
+          const proto = document.getElementById(choice).cloneNode(true);
+          proto.setAttribute('visible','true');
 
-        function handleTouch(ev){
-          // Use reticle if visible
-          if(reticle && reticle.getAttribute('visible')){
-            spawnAt(reticle.object3D.position.clone());
-          } else {
-            // fallback for desktop
-            const rect = scene.canvas.getBoundingClientRect();
-            const x = ((ev.touches?ev.touches[0].clientX:ev.clientX)-rect.left)/rect.width*2-1;
-            const y = -(((ev.touches?ev.touches[0].clientY:ev.clientY)-rect.top)/rect.height*2-1);
-            const mouse = new THREE.Vector2(x,y);
-            const cam = scene.camera;
-            const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(mouse, cam);
-            const plane = new THREE.Plane(new THREE.Vector3(0,1,0),0);
-            const target = new THREE.Vector3();
-            raycaster.ray.intersectPlane(plane,target);
-            if(target) spawnAt(target);
-          }
+          const wrapper = document.createElement('a-entity');
+          wrapper.setAttribute('position', `${position.x} ${position.y} ${position.z}`);
+          wrapper.appendChild(proto);
+
+          container.appendChild(wrapper);
         }
+
+        // Listen for taps
+        scene.canvas.addEventListener('touchstart', () => {
+          if (reticle && reticle.object3D.visible) {
+            spawnAt(reticle.object3D.position.clone());
+          }
+        });
       }
     });
 
-    // AR button
-    document.getElementById('enter-ar').onclick = async ()=>{
-      const scene = document.querySelector('a-scene');
-      const renderer = scene.renderer;
-      if(!navigator.xr){ alert('WebXR not available'); return; }
-      try{
+    document.querySelector('a-scene').setAttribute('ar-hit-test','');
+
+    // AR button functionality
+    document.getElementById('ar-button').onclick = async () => {
+      if (!navigator.xr) { alert('WebXR not supported'); return; }
+      try {
         const supported = await navigator.xr.isSessionSupported('immersive-ar');
-        if(!supported){ alert('Immersive AR not supported'); return; }
-        const session = await navigator.xr.requestSession('immersive-ar',{requiredFeatures:['hit-test','local-floor']});
-        await renderer.xr.setSession(session);
-      }catch(err){ alert('Failed to start AR session: '+err); console.error(err); }
+        if (!supported) { alert('Immersive AR not supported'); return; }
+        const scene = document.querySelector('a-scene');
+        const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test','local-floor'] });
+        await scene.renderer.xr.setSession(session);
+      } catch(err) {
+        alert('AR session failed: ' + err);
+        console.error(err);
+      }
     };
   </script>
-
 </body>
 </html>
