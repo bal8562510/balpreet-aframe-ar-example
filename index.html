@@ -10,13 +10,18 @@
   </style>
 </head>
 <body>
-  <div class="hint">Tap/click anywhere to spawn snowmen or pine trees.</div>
+  <div class="hint">Tap anywhere to spawn snowmen or pine trees.</div>
 
-  <a-scene embedded>
-    <!-- Camera -->
-    <a-entity camera look-controls position="0 2 5"></a-entity>
+  <a-scene
+      webxr="requiredFeatures: hit-test"
+      embedded
+      renderer="colorManagement: true;"
+      vr-mode-ui="enabled: false">
 
-    <!-- Ground plane -->
+    <!-- AR camera -->
+    <a-camera position="0 1.6 0" camera look-controls></a-camera>
+
+    <!-- Fallback ground for desktop -->
     <a-plane rotation="-90 0 0" width="20" height="20" color="#7ec850" position="0 0 0"></a-plane>
 
     <!-- Container for spawned objects -->
@@ -46,15 +51,15 @@
       const proto = document.getElementById(choice).cloneNode(true);
       proto.setAttribute('visible','true');
 
-      // Get click/tap position and convert to world coordinates on ground plane
-      const cursorPos = evt.detail ? evt.detail.intersection.point : null;
-      let x = 0, y = 0, z = 0;
-      if(cursorPos){
-        x = cursorPos.x;
+      let x=0, y=0, z=0;
+
+      // If AR hit-test exists
+      if(evt.detail && evt.detail.intersection){
+        x = evt.detail.intersection.point.x;
         y = 0;
-        z = cursorPos.z;
+        z = evt.detail.intersection.point.z;
       } else {
-        // fallback: random position on ground
+        // fallback: random placement on plane
         x = (Math.random()-0.5)*10;
         y = 0;
         z = (Math.random()-0.5)*10;
@@ -64,7 +69,6 @@
       container.appendChild(proto);
     }
 
-    // Tap/click listener
     scene.addEventListener('click', spawnObject);
     scene.addEventListener('touchstart', spawnObject);
   </script>
