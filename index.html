@@ -1,30 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Winter AR — Snowmen & Pine Trees</title>
-  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
-  <style>
-    body { margin:0; overflow:hidden; }
-    .hint { position:absolute; bottom:12px; left:12px; background:rgba(0,0,0,0.6); color:white; padding:8px 12px; border-radius:8px; z-index:10;}
-  </style>
+<meta charset="UTF-8">
+<title>Winter AR — Snowmen & Pine Trees</title>
+<script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
+<style>
+  body { margin: 0; overflow: hidden; }
+  .hint { position: absolute; bottom: 12px; left: 12px; background: rgba(0,0,0,0.6); color: white; padding: 8px 12px; border-radius: 8px; z-index: 10; }
+</style>
 </head>
 <body>
-  <div class="hint">Tap anywhere to spawn snowmen or pine trees.</div>
+  <div class="hint">Tap screen to place a snowman or pine tree.</div>
 
   <a-scene
-      webxr="requiredFeatures: hit-test"
-      embedded
-      renderer="colorManagement: true;"
-      vr-mode-ui="enabled: false">
+    webxr="requiredFeatures: hit-test"
+    vr-mode-ui="enabled: false"
+    embedded
+    renderer="colorManagement: true;">
 
     <!-- AR camera -->
-    <a-camera position="0 1.6 0" camera look-controls></a-camera>
+    <a-camera camera></a-camera>
 
-    <!-- Fallback ground for desktop -->
+    <!-- Optional fallback plane for desktop preview -->
     <a-plane rotation="-90 0 0" width="20" height="20" color="#7ec850" position="0 0 0"></a-plane>
 
-    <!-- Container for spawned objects -->
+    <!-- Placement container -->
     <a-entity id="placements"></a-entity>
 
     <!-- Snowman prototype -->
@@ -40,6 +40,7 @@
       <a-cone radius-bottom="0.25" radius-top="0.01" height="0.28" position="0 0.30 0" color="#0b8a2e"></a-cone>
       <a-cone radius-bottom="0.19" radius-top="0.01" height="0.24" position="0 0.45 0" color="#0fa43a"></a-cone>
     </a-entity>
+
   </a-scene>
 
   <script>
@@ -51,26 +52,20 @@
       const proto = document.getElementById(choice).cloneNode(true);
       proto.setAttribute('visible','true');
 
-      let x=0, y=0, z=0;
-
-      // If AR hit-test exists
-      if(evt.detail && evt.detail.intersection){
-        x = evt.detail.intersection.point.x;
-        y = 0;
-        z = evt.detail.intersection.point.z;
+      // hit-test point if AR
+      let pos = evt.detail && evt.detail.intersection ? evt.detail.intersection.point : null;
+      if (pos) {
+        proto.setAttribute('position', `${pos.x} 0 ${pos.z}`);
       } else {
-        // fallback: random placement on plane
-        x = (Math.random()-0.5)*10;
-        y = 0;
-        z = (Math.random()-0.5)*10;
+        // fallback random
+        proto.setAttribute('position', `${(Math.random()-0.5)*10} 0 ${(Math.random()-0.5)*10}`);
       }
-
-      proto.setAttribute('position', `${x} ${y} ${z}`);
       container.appendChild(proto);
     }
 
     scene.addEventListener('click', spawnObject);
     scene.addEventListener('touchstart', spawnObject);
   </script>
+
 </body>
 </html>
